@@ -1,5 +1,7 @@
 from fastapi import FastAPI
+from app.api.auth.errors import register_all_errors
 from app.core.config import settings
+from app.core.middleware import register_middleware
 from app.core.routes import router as main_router
 
 description = """
@@ -19,6 +21,9 @@ app = FastAPI(title=settings.PROJECT_NAME,
               )
 version_prefix = f"/api/v1"
 app.include_router(main_router, prefix=version_prefix)
+
+register_all_errors(app)
+register_middleware(app)
 
 @app.get("/", tags=["Root"])
 async def read_root():
