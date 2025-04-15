@@ -62,6 +62,10 @@ async def send_mail(emails: EmailModel):
     return {"message": "Email sent successfully"}
 
 
+# ------------------------------------------------
+# Auth Routes
+# ------------------------------------------------
+
 @auth_router.post("/signup", status_code=status.HTTP_201_CREATED)
 async def create_user_Account(
     user_data: UserCreateModel,
@@ -108,29 +112,6 @@ async def create_user_Account(
     )
 
 
-@auth_router.get("/verify/{token}")
-async def verify_user_account(token: str, session: AsyncSession = Depends(async_get_db)):
-    token_data = decode_url_safe_token(token)
-    user_email = token_data.get("email")
-    if user_email:
-        user = await user_service.get_user_by_email(user_email, session)
-
-        if not user:
-            raise UserNotFound()
-
-        await user_service.update_user(user, {"is_verified": True}, session)
-
-        return JSONResponse(
-            content={"message": "Account verified successfully"},
-            status_code=status.HTTP_200_OK,
-        )
-
-    return JSONResponse(
-        content={"message": "Error occured during verification"},
-        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-    )
-
-
 @auth_router.post("/login")
 async def login_users(
     login_data: UserLoginModel, session: AsyncSession = Depends(async_get_db)
@@ -171,6 +152,30 @@ async def login_users(
     raise InvalidCredentials()
 
 
+@auth_router.get("/verify/{token}")
+async def verify_user_account(token: str, session: AsyncSession = Depends(async_get_db)):
+    token_data = decode_url_safe_token(token)
+    user_email = token_data.get("email")
+    if user_email:
+        user = await user_service.get_user_by_email(user_email, session)
+
+        if not user:
+            raise UserNotFound()
+
+        await user_service.update_user(user, {"is_verified": True}, session)
+
+        return JSONResponse(
+            content={"message": "Account verified successfully"},
+            status_code=status.HTTP_200_OK,
+        )
+
+    return JSONResponse(
+        content={"message": "Error occured during verification"},
+        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+    )
+
+
+
 @auth_router.get("/refresh_token")
 async def get_new_access_token(token_details: dict = Depends(RefreshTokenBearer())):
     expiry_timestamp = token_details["exp"]
@@ -181,13 +186,6 @@ async def get_new_access_token(token_details: dict = Depends(RefreshTokenBearer(
         return JSONResponse(content={"access_token": new_access_token})
 
     raise InvalidToken
-
-
-@auth_router.get("/profile", response_model=UserModel)
-async def get_current_user(
-    user=Depends(get_current_user), _: bool = Depends(role_checker)
-):
-    return user
 
 
 @auth_router.get("/logout")
@@ -263,10 +261,12 @@ async def reset_account_password(
         status_code=status.HTTP_500_INTERNAL_SERVER_ERROR
     )
 
-
+# ------------------------------------------------
+# Admin Routes
+# ------------------------------------------------
 @auth_router.get("/users", response_model=List[UserResponseModel])
 async def fetch_users(
-    role: str = Query("All", enum=["All", "admin", "teacher", "student"]),
+    role: str = Query("All", enum=["All", "admin", "user"]),
     limit: int = Query(10, gt=0),
     offset: int = Query(0, ge=0),
     _: bool = Depends(admin_checker),
@@ -276,19 +276,11 @@ async def fetch_users(
     return users
 
 
-@auth_router.delete("/delete_user/{user_id}")
-async def delete_user(
-        user_id: UUID,
-        _: UserModel = Depends(get_current_user),
-        session: AsyncSession = Depends(async_get_db),
+@auth_router.get("/profile", response_model=UserModel)
+async def get_current_user(
+    user=Depends(get_current_user), _: bool = Depends(role_checker)
 ):
-    deleted = await user_service.delete_user(user_id, session)
-
-    if deleted:
-        return JSONResponse(content={"message": "User deleted successfully"}, status_code=status.HTTP_200_OK)
-
-    raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
-                        detail="User not found")
+    return user
 
 
 @auth_router.put("/update-user")
@@ -315,6 +307,24 @@ async def update_user(
         status_code=status.HTTP_200_OK
     )
 
+@auth_router.delete("/delete_user/{user_id}")
+async def delete_user(
+        user_id: UUID,
+        _: UserModel = Depends(get_current_user),
+        session: AsyncSession = Depends(async_get_db),
+):
+    deleted = await user_service.delete_user(user_id, session)
+
+    if deleted:
+        return JSONResponse(content={"message": "User deleted successfully"}, status_code=status.HTTP_200_OK)
+
+    raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
+                        detail="User not found")
+
+
+# ------------------------------------------------
+# OAuth Routes
+# ------------------------------------------------
 
 @auth_router.post("/oauth-login")
 async def oauth_login(
