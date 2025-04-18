@@ -9,14 +9,14 @@ from app.core.database import async_get_db
 from app.core.mail import send_email, send_multiple_emails
 from app.core.redis import token_in_blocklist, add_jti_to_blocklist
 
-from .dependencies import (
+from ..dependencies import (
     AccessTokenBearer,
     RefreshTokenBearer,
     RoleChecker,
     get_current_user,
     verify_oauth_token,
 )
-from .schemas import (
+from ..schemas.schemas import (
     OauthUserCreateModel,
     UserCreateModel,
     UserLoginModel,
@@ -27,15 +27,15 @@ from .schemas import (
     UserResponseModel,
     UserUpdateModel,
 )
-from .service import UserService
-from .utils import (
+from ..services.service import UserService
+from ..utils import (
     create_access_token,
     verify_password,
     generate_passwd_hash,
     create_url_safe_token,
     decode_url_safe_token,
 )
-from .errors import UserAlreadyExists, UserNotFound, InvalidCredentials, InvalidToken
+from ..errors import UserAlreadyExists, UserNotFound, InvalidCredentials, InvalidToken
 from app.core.config import settings
 from typing import List
 
@@ -86,11 +86,10 @@ async def create_user_Account(
 
     new_user = await user_service.create_user(user_data, session)
 
-
     token = create_url_safe_token({"email": email})
     print(token)
 
-    link = f"http://{settings.DOMAIN}/api/v1/auth/verify/{token}"
+    link = f"http://{settings.DOMAIN}/verify-email?token={token}"
 
     html = f"""
     <h1>Verify your Email</h1>
@@ -116,6 +115,11 @@ async def create_user_Account(
 async def login_users(
     login_data: UserLoginModel, session: AsyncSession = Depends(async_get_db)
 ):
+    """
+    Login user using email and password
+    params:
+        login_data: UserLoginModel
+    """
     email = login_data.email
     password = login_data.password
 
@@ -154,6 +158,11 @@ async def login_users(
 
 @auth_router.get("/verify/{token}")
 async def verify_user_account(token: str, session: AsyncSession = Depends(async_get_db)):
+    """
+    Verify user account using token
+    params:
+        token: str
+    """
     token_data = decode_url_safe_token(token)
     user_email = token_data.get("email")
     if user_email:
@@ -175,7 +184,6 @@ async def verify_user_account(token: str, session: AsyncSession = Depends(async_
     )
 
 
-
 @auth_router.get("/refresh_token")
 async def get_new_access_token(token_details: dict = Depends(RefreshTokenBearer())):
     expiry_timestamp = token_details["exp"]
@@ -190,6 +198,11 @@ async def get_new_access_token(token_details: dict = Depends(RefreshTokenBearer(
 
 @auth_router.get("/logout")
 async def revoke_token(token_details: dict = Depends(AccessTokenBearer())):
+    """
+    Revoke the access token and refresh token
+    params:
+        token_details: dict
+    """
     jti = token_details["jti"]
 
     await add_jti_to_blocklist(jti)
@@ -203,7 +216,7 @@ async def revoke_token(token_details: dict = Depends(AccessTokenBearer())):
 async def password_reset_request(
     email_data: PasswordResetRequestModel,
     background_tasks: BackgroundTasks
-    ):
+):
     email = email_data.email
     token = create_url_safe_token({"email": email})
 
@@ -230,6 +243,12 @@ async def reset_account_password(
     passwords: PasswordResetConfirmModel,
     session: AsyncSession = Depends(async_get_db),
 ):
+    """
+    Reset user password using token
+    params:
+        token: str
+        passwords: PasswordResetConfirmModel
+    """
     new_password = passwords.new_password
     confirm_password = passwords.confirm_new_password
 
@@ -262,64 +281,96 @@ async def reset_account_password(
     )
 
 # ------------------------------------------------
-# Admin Routes
+# 2FA Routes
 # ------------------------------------------------
-@auth_router.get("/users", response_model=List[UserResponseModel])
-async def fetch_users(
-    role: str = Query("All", enum=["All", "admin", "user"]),
-    limit: int = Query(10, gt=0),
-    offset: int = Query(0, ge=0),
-    _: bool = Depends(admin_checker),
-    session: AsyncSession = Depends(async_get_db)
-):
-    users = await user_service.get_users(role, limit, offset, session)
-    return users
 
-
-@auth_router.get("/profile", response_model=UserModel)
-async def get_current_user(
-    user=Depends(get_current_user), _: bool = Depends(role_checker)
-):
-    return user
-
-
-@auth_router.put("/update-user")
-async def update_user(
-    user_data: UserUpdateModel,
+@auth_router.post("/enable-2FA")
+async def enable_2fa(
     user: UserModel = Depends(get_current_user),
     session: AsyncSession = Depends(async_get_db)
 ):
-    # Check if the email already exists
-    user_exists = await user_service.user_exists(user_data.email, session)
-
-    if user_exists and user_data.email != user.email:
+    """
+    Enable 2FA for user
+    params:
+        user: UserModel
+    """
+    if not user.is_verified:
         raise HTTPException(
-            detail="Email is already in use by another account.",
-            status_code=status.HTTP_400_BAD_REQUEST
+            detail="User is not verified", status_code=status.HTTP_400_BAD_REQUEST
         )
-
-    updated_user = await user_service.update_user(user, user_data.model_dump(), session)
-
+    if user.two_factor_enabled:
+        raise HTTPException(
+            detail="2FA is already enabled", status_code=status.HTTP_400_BAD_REQUEST
+        )
+    code = user_service.generate_2fa_code()
+    user_service.save_2fa_code(user, code, session)
+    html = f"""
+    <h1>2FA Code</h1>
+    <p>Your 2FA code is: {code}</p>
+    """
+    subject = "2FA Code"
+    background_tasks = BackgroundTasks()
+    background_tasks.add_task(send_email, [user.email], subject, html, True)
     return JSONResponse(
-        content={"message": "User information updated successfully",
-                 "user": updated_user
-                 },
-        status_code=status.HTTP_200_OK
+        content={"message": "2FA code sent successfully"},
+        status_code=status.HTTP_200_OK,
     )
 
-@auth_router.delete("/delete_user/{user_id}")
-async def delete_user(
-        user_id: UUID,
-        _: UserModel = Depends(get_current_user),
-        session: AsyncSession = Depends(async_get_db),
+
+@auth_router.post("/verify-2FA-code")
+async def verify_2fa_code(
+    code: str,
+    user: UserModel = Depends(get_current_user),
+    session: AsyncSession = Depends(async_get_db)
 ):
-    deleted = await user_service.delete_user(user_id, session)
+    """
+    Verify 2FA code
+    params:
+        code: str
+        user: UserModel
+    """
+    if not user.is_verified:
+        raise HTTPException(
+            detail="User is not verified", status_code=status.HTTP_400_BAD_REQUEST
+        )
+    if user.two_factor_enabled:
+        raise HTTPException(
+            detail="2FA is already enabled", status_code=status.HTTP_400_BAD_REQUEST
+        )
+    if not user_service.verify_2fa_code(user, code, session):
+        raise HTTPException(
+            detail="Invalid 2FA code", status_code=status.HTTP_400_BAD_REQUEST
+        )
+    user_service.enable_2fa(user, session)
+    return JSONResponse(
+        content={"message": "2FA enabled successfully"},
+        status_code=status.HTTP_200_OK,
+    )
 
-    if deleted:
-        return JSONResponse(content={"message": "User deleted successfully"}, status_code=status.HTTP_200_OK)
 
-    raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
-                        detail="User not found")
+@auth_router.post("/disable-2FA")
+async def disable_2fa(
+    user: UserModel = Depends(get_current_user),
+    session: AsyncSession = Depends(async_get_db)
+):
+    """
+    Disable 2FA for user
+    params:
+        user: UserModel
+    """
+    if not user.is_verified:
+        raise HTTPException(
+            detail="User is not verified", status_code=status.HTTP_400_BAD_REQUEST
+        )
+    if not user.is_2fa_enabled:
+        raise HTTPException(
+            detail="2FA is not enabled", status_code=status.HTTP_400_BAD_REQUEST
+        )
+    user_service.disable_2fa(user, session)
+    return JSONResponse(
+        content={"message": "2FA disabled successfully"},
+        status_code=status.HTTP_200_OK,
+    )
 
 
 # ------------------------------------------------

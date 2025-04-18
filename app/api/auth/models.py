@@ -1,5 +1,5 @@
 from enum import Enum
-from sqlalchemy import Column, String, Boolean, ForeignKey, DateTime
+from sqlalchemy import Column, String, Boolean, ForeignKey, DateTime, UniqueConstraint
 from sqlalchemy.orm import relationship
 from sqlalchemy.dialects.postgresql import UUID
 import uuid
@@ -35,10 +35,73 @@ class User(Base):
     is_oauth = Column(Boolean, default=False)
     login_provider = Column(String, nullable=True, default="email")
     profile_completed = Column(Boolean, default=False)
-    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False)
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(
+        timezone.utc), nullable=False)
 
     activities = relationship(
         "Activity", back_populates="user", cascade="all, delete-orphan")
+    
+    two_factor_confirmation = relationship(
+        "TwoFactorConfirmation", back_populates="user", uselist=False, cascade="all, delete-orphan")
+    verification_token = relationship(
+        "VerificationToken", back_populates="user", uselist=False, cascade="all, delete-orphan")
+    password_reset_token = relationship(
+        "PasswordResetToken", back_populates="user", uselist=False, cascade="all, delete-orphan")
+    two_factor_token = relationship(
+        "TwoFactorToken", back_populates="user", uselist=False, cascade="all, delete-orphan")
+
+
+class VerificationToken(Base):
+    __tablename__ = "verification_token"
+    id = Column(UUID(as_uuid=True), primary_key=True,
+                default=uuid.uuid4, unique=True, nullable=False)
+    email = Column(String, nullable=False)
+    token = Column(String, unique=True, nullable=False)
+    expires = Column(DateTime, nullable=False)
+
+    __table_args__ = (
+        UniqueConstraint("email", "token", name="uq_verification_email_token"),
+    )
+
+
+class PasswordResetToken(Base):
+    __tablename__ = "password_reset_token"
+    id = Column(UUID(as_uuid=True), primary_key=True,
+                default=uuid.uuid4, unique=True, nullable=False)
+    email = Column(String, nullable=False)
+    token = Column(String, unique=True, nullable=False)
+    expires = Column(DateTime, nullable=False)
+
+    __table_args__ = (
+        UniqueConstraint("email", "token", name="uq_password_email_token"),
+    )
+
+
+class TwoFactorToken(Base):
+    __tablename__ = "two_factor_token"
+    id = Column(UUID(as_uuid=True), primary_key=True,
+                default=uuid.uuid4, unique=True, nullable=False)
+    email = Column(String, nullable=False)
+    token = Column(String, unique=True, nullable=False)
+    expires = Column(DateTime, nullable=False)
+
+    __table_args__ = (
+        UniqueConstraint("email", "token", name="uq_2fa_email_token"),
+    )
+
+
+class TwoFactorConfirmation(Base):
+    __tablename__ = "two_factor_confirmation"
+    id = Column(UUID(as_uuid=True), primary_key=True,
+                default=uuid.uuid4, unique=True, nullable=False)
+    user_id = Column(String, ForeignKey(
+        "user.id", ondelete="CASCADE"), nullable=False)
+
+    user = relationship("User", back_populates="two_factor_confirmation")
+
+    __table_args__ = (
+        UniqueConstraint("user_id", name="uq_2fa_user"),
+    )
 
 
 class ActivityType(str, Enum):

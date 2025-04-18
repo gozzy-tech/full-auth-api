@@ -7,7 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database import async_get_db
 from .models import User
 from app.core.redis import token_in_blocklist
-from .service import UserService
+from .services.service import UserService
 from .utils import decode_token
 from .errors import (
     InvalidToken,

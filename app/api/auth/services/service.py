@@ -3,10 +3,13 @@ from fastapi import Depends
 from sqlalchemy.future import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database import async_get_db
-from .models import User
-from .schemas import OauthUserCreateModel, UserCreateModel
-from .utils import generate_passwd_hash
+from ..models import User
+from ..schemas.schemas import OauthUserCreateModel, UserCreateModel
+from ..utils import generate_passwd_hash
 from typing import Optional, List
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import delete, select
+
 
 
 class UserService:
@@ -74,3 +77,5 @@ class UserService:
         await session.delete(user)
         await session.commit()
         return True  # Successfully deleted
+
+
