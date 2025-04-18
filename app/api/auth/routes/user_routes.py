@@ -24,7 +24,8 @@ user_service = UserService()
 role_checker = RoleChecker(["admin", "user"])
 admin_checker = RoleChecker(["admin"])
 
-@user_router.get("/", response_model=List[UserResponseModel])
+
+@user_router.get("/all", response_model=List[UserResponseModel])
 async def fetch_users(
     role: str = Query("All", enum=["All", "admin", "user"]),
     limit: int = Query(10, gt=0),
@@ -71,7 +72,7 @@ async def update_user(
 @user_router.delete("/delete_user/{user_id}")
 async def delete_user(
         user_id: UUID,
-        _: UserModel = Depends(get_current_user),
+        # _: UserModel = Depends(get_current_user),
         session: AsyncSession = Depends(async_get_db),
 ):
     deleted = await user_service.delete_user(user_id, session)
@@ -81,4 +82,3 @@ async def delete_user(
 
     raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
                         detail="User not found")
-

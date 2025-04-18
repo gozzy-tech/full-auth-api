@@ -10,7 +10,7 @@ from app.core.database import Base
 # Enum for user roles
 class Role(str, Enum):
     ADMIN = "admin"
-    USERS = "users"
+    USER = "user"
 
 
 class User(Base):
@@ -29,7 +29,7 @@ class User(Base):
     avatar = Column(String, nullable=True)
     bio = Column(String, nullable=True)
     gender = Column(String, nullable=True)
-    role = Column(String, nullable=False, default=Role.USERS.value)
+    role = Column(String, nullable=False, default=Role.USER.value)
     is_verified = Column(Boolean, default=False)
     two_factor_enabled = Column(Boolean, default=False)
     is_oauth = Column(Boolean, default=False)
@@ -43,12 +43,6 @@ class User(Base):
     
     two_factor_confirmation = relationship(
         "TwoFactorConfirmation", back_populates="user", uselist=False, cascade="all, delete-orphan")
-    verification_token = relationship(
-        "VerificationToken", back_populates="user", uselist=False, cascade="all, delete-orphan")
-    password_reset_token = relationship(
-        "PasswordResetToken", back_populates="user", uselist=False, cascade="all, delete-orphan")
-    two_factor_token = relationship(
-        "TwoFactorToken", back_populates="user", uselist=False, cascade="all, delete-orphan")
 
 
 class VerificationToken(Base):
@@ -57,7 +51,8 @@ class VerificationToken(Base):
                 default=uuid.uuid4, unique=True, nullable=False)
     email = Column(String, nullable=False)
     token = Column(String, unique=True, nullable=False)
-    expires = Column(DateTime, nullable=False)
+    expires = Column(DateTime(timezone=True), default=lambda: datetime.now(
+        timezone.utc), nullable=False)
 
     __table_args__ = (
         UniqueConstraint("email", "token", name="uq_verification_email_token"),
@@ -70,7 +65,8 @@ class PasswordResetToken(Base):
                 default=uuid.uuid4, unique=True, nullable=False)
     email = Column(String, nullable=False)
     token = Column(String, unique=True, nullable=False)
-    expires = Column(DateTime, nullable=False)
+    expires = Column(DateTime(timezone=True), default=lambda: datetime.now(
+        timezone.utc), nullable=False)
 
     __table_args__ = (
         UniqueConstraint("email", "token", name="uq_password_email_token"),
@@ -83,7 +79,8 @@ class TwoFactorToken(Base):
                 default=uuid.uuid4, unique=True, nullable=False)
     email = Column(String, nullable=False)
     token = Column(String, unique=True, nullable=False)
-    expires = Column(DateTime, nullable=False)
+    expires = Column(DateTime(timezone=True), default=lambda: datetime.now(
+        timezone.utc), nullable=False)
 
     __table_args__ = (
         UniqueConstraint("email", "token", name="uq_2fa_email_token"),
@@ -94,14 +91,15 @@ class TwoFactorConfirmation(Base):
     __tablename__ = "two_factor_confirmation"
     id = Column(UUID(as_uuid=True), primary_key=True,
                 default=uuid.uuid4, unique=True, nullable=False)
-    user_id = Column(String, ForeignKey(
-        "user.id", ondelete="CASCADE"), nullable=False)
+    user_id = Column(UUID(as_uuid=True), ForeignKey(
+        "users.id", ondelete="CASCADE"), nullable=False)  # Ensure correct foreign key reference
 
     user = relationship("User", back_populates="two_factor_confirmation")
 
     __table_args__ = (
         UniqueConstraint("user_id", name="uq_2fa_user"),
     )
+
 
 
 class ActivityType(str, Enum):

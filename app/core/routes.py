@@ -7,4 +7,4 @@ router = APIRouter()
 
 router.include_router(auth_router, prefix="/auth", tags=["authentication"])
 router.include_router(oauth_router, prefix="/oauth", tags=["oauth"])
-router.include_router(user_router, prefix="/users", tags=["users"])
+router.include_router(user_router, prefix="/user", tags=["user"])
