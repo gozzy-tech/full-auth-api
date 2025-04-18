@@ -133,6 +133,39 @@ class TokenService:
         if two_factor_token and two_factor_token.expires > datetime.now(timezone.utc):
             return two_factor_token
         return None
+    
+    # enable two factor for User
+    async def enable_two_factor_for_user(self, user_id: str, db: AsyncSession) -> TwoFactorConfirmation:
+        # Check if the user already has two-factor enabled
+        result = await db.execute(
+            select(TwoFactorConfirmation).where(
+                TwoFactorConfirmation.user_id == user_id)
+        )
+        existing = result.scalars().first()
+        if existing:
+            return existing
+        else:
+            new_confirmation = TwoFactorConfirmation(user_id=user_id)
+            db.add(new_confirmation)
+            await db.commit()
+            await db.refresh(new_confirmation)
+            return new_confirmation
+
+    async def disable_two_factor_for_user(self, user_id: str, db: AsyncSession) -> None:
+        # Check if the user has two-factor enabled
+        result = await db.execute(
+            select(TwoFactorConfirmation).where(
+                TwoFactorConfirmation.user_id == user_id)
+        )
+        existing = result.scalars().first()
+        if existing:
+            await db.execute(delete(TwoFactorConfirmation).where(
+                TwoFactorConfirmation.user_id == user_id)
+            )
+            await db.commit()
+            return True
+        else:
+            return False
 
     # Get Verification Token by Email
 

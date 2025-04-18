@@ -78,3 +78,4 @@ def decode_url_safe_token(token: str):
 
     except Exception as e:
         logging.error(str(e))
+

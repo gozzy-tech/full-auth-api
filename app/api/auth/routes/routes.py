@@ -1,39 +1,32 @@
 from datetime import datetime, timedelta
-from uuid import UUID
-
-from fastapi import APIRouter, Depends, status, BackgroundTasks, Query
+from fastapi import APIRouter, Depends, status, BackgroundTasks
 from fastapi.exceptions import HTTPException
 from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
+from app.api.auth.services.token_service import TokenService
 from app.core.database import async_get_db
 from app.core.mail import send_email, send_multiple_emails
-from app.core.redis import token_in_blocklist, add_jti_to_blocklist
+from app.core.redis import add_jti_to_blocklist
 
 from ..dependencies import (
     AccessTokenBearer,
     RefreshTokenBearer,
     RoleChecker,
     get_current_user,
-    verify_oauth_token,
 )
 from ..schemas.schemas import (
-    OauthUserCreateModel,
     UserCreateModel,
     UserLoginModel,
     UserModel,
     EmailModel,
     PasswordResetRequestModel,
     PasswordResetConfirmModel,
-    UserResponseModel,
-    UserUpdateModel,
 )
 from ..services.service import UserService
 from ..utils import (
     create_access_token,
     verify_password,
     generate_passwd_hash,
-    create_url_safe_token,
-    decode_url_safe_token,
 )
 from ..errors import UserAlreadyExists, UserNotFound, InvalidCredentials, InvalidToken
 from app.core.config import settings
@@ -41,6 +34,7 @@ from typing import List
 
 auth_router = APIRouter()
 user_service = UserService()
+token_service = TokenService()
 role_checker = RoleChecker(["admin", "user"])
 admin_checker = RoleChecker(["admin"])
 
@@ -86,20 +80,18 @@ async def create_user_Account(
 
     new_user = await user_service.create_user(user_data, session)
 
-    token = create_url_safe_token({"email": email})
-    print(token)
+    token = await token_service.generate_verification_token(
+        email=email,
+        db=session,
+    )
 
     link = f"http://{settings.DOMAIN}/verify-email?token={token}"
-
     html = f"""
     <h1>Verify your Email</h1>
     <p>Please click this <a href="{link}">link</a> to verify your email</p>
     """
-
     emails = [email]
-
     subject = "Verify Your email"
-
     background_tasks.add_task(send_email, emails, subject, html, True)
 
     return JSONResponse(
@@ -113,45 +105,69 @@ async def create_user_Account(
 
 @auth_router.post("/login")
 async def login_users(
-    login_data: UserLoginModel, session: AsyncSession = Depends(async_get_db)
+    login_data: UserLoginModel,
+    background_tasks: BackgroundTasks,
+    session: AsyncSession = Depends(async_get_db),
 ):
-    """
-    Login user using email and password
-    params:
-        login_data: UserLoginModel
-    """
     email = login_data.email
     password = login_data.password
 
     user = await user_service.get_user_by_email(email, session)
 
-    if user is not None:
-        password_valid = verify_password(password, user.password_hash)
-
-        if password_valid:
-            access_token = create_access_token(
-                user_data={
-                    "email": user.email,
-                    "user_uid": str(user.id),
-                    "role": user.role,
-                }
+    if user and verify_password(password, user.password_hash):
+        if user.two_factor_enabled:
+            two_factor_token = await token_service.generate_two_factor_token(
+                user_id=user.id, db=session
             )
-
-            refresh_token = create_access_token(
-                user_data={"email": user.email, "user_uid": str(user.id)},
-                refresh=True,
-                expiry=timedelta(days=REFRESH_TOKEN_EXPIRY),
-            )
+            
+            html = f"""
+            <h1>2FA Code</h1>
+            <p>
+                Your 2FA code is: <strong>{two_factor_token.token}</strong>
+                <br>
+                This code is valid for 5 minutes.
+            </p>
+            <p>
+                If you did not request this code, please ignore this email.
+            </p>
+            """
+            emails = [user.email]
+            subject = "2FA Code"
+            background_tasks.add_task(send_email, emails, subject, html, True)
 
             return JSONResponse(
                 content={
-                    "message": "Login successful",
-                    "access_token": access_token,
-                    "refresh_token": refresh_token,
+                    "message": "2FA code sent to your email",
+                    "two_factor_required": True,
                     "user": {"email": user.email, "uid": str(user.id)},
                 },
-                status_code=status.HTTP_200_OK
+                status_code=status.HTTP_202_ACCEPTED
             )
+
+        # If 2FA not enabled, proceed with token generation
+        access_token = create_access_token(
+            user_data={
+                "email": user.email,
+                "user_uid": str(user.id),
+                "role": user.role,
+            }
+        )
+
+        refresh_token = create_access_token(
+            user_data={"email": user.email, "user_uid": str(user.id)},
+            refresh=True,
+            expiry=timedelta(days=REFRESH_TOKEN_EXPIRY),
+        )
+
+        return JSONResponse(
+            content={
+                "message": "Login successful",
+                "access_token": access_token,
+                "refresh_token": refresh_token,
+                "user": {"email": user.email, "uid": str(user.id)},
+            },
+            status_code=status.HTTP_200_OK
+        )
 
     raise InvalidCredentials()
 
@@ -163,7 +179,7 @@ async def verify_user_account(token: str, session: AsyncSession = Depends(async_
     params:
         token: str
     """
-    token_data = decode_url_safe_token(token)
+    token_data = await token_service.get_verification_token_by_token(token, session)
     user_email = token_data.get("email")
     if user_email:
         user = await user_service.get_user_by_email(user_email, session)
@@ -218,9 +234,13 @@ async def password_reset_request(
     background_tasks: BackgroundTasks
 ):
     email = email_data.email
-    token = create_url_safe_token({"email": email})
+    token = await token_service.generate_password_reset_token(email)
+    if not token:
+        raise HTTPException(
+            detail="Invalid email address", status_code=status.HTTP_400_BAD_REQUEST
+        )
 
-    link = f"http://{settings.DOMAIN}/api/v1/auth/password-reset-confirm/{token}"
+    link = f"http://{settings.DOMAIN}/reset-password?token={token}"
 
     html_message = f"""
     <h1>Reset Your Password</h1>
@@ -257,8 +277,7 @@ async def reset_account_password(
             detail="Passwords do not match", status_code=status.HTTP_400_BAD_REQUEST
         )
 
-    token_data = decode_url_safe_token(token)
-
+    token_data = await token_service.get_password_reset_token_by_token(token, session)
     user_email = token_data.get("email")
 
     if user_email:
@@ -280,11 +299,11 @@ async def reset_account_password(
         status_code=status.HTTP_500_INTERNAL_SERVER_ERROR
     )
 
+
 # ------------------------------------------------
 # 2FA Routes
 # ------------------------------------------------
-
-@auth_router.post("/enable-2FA")
+@auth_router.get("/enable-2FA")
 async def enable_2fa(
     user: UserModel = Depends(get_current_user),
     session: AsyncSession = Depends(async_get_db)
@@ -294,119 +313,52 @@ async def enable_2fa(
     params:
         user: UserModel
     """
-    if not user.is_verified:
+    user_2fa = await token_service.enable_two_factor_for_user(user.id, session)
+    if not user_2fa:
         raise HTTPException(
-            detail="User is not verified", status_code=status.HTTP_400_BAD_REQUEST
+            detail="Error enabling 2FA", status_code=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
-    if user.two_factor_enabled:
-        raise HTTPException(
-            detail="2FA is already enabled", status_code=status.HTTP_400_BAD_REQUEST
-        )
-    code = user_service.generate_2fa_code()
-    user_service.save_2fa_code(user, code, session)
-    html = f"""
-    <h1>2FA Code</h1>
-    <p>Your 2FA code is: {code}</p>
-    """
-    subject = "2FA Code"
-    background_tasks = BackgroundTasks()
-    background_tasks.add_task(send_email, [user.email], subject, html, True)
+    await user_service.update_user(user, {"two_factor_enabled": True}, session)
     return JSONResponse(
-        content={"message": "2FA code sent successfully"},
+        content={
+            "message": "2FA enabled successfully",
+        },
         status_code=status.HTTP_200_OK,
     )
 
 
-@auth_router.post("/verify-2FA-code")
+@auth_router.post("/verify-2FA-code/{token}", status_code=status.HTTP_200_OK)
 async def verify_2fa_code(
-    code: str,
-    user: UserModel = Depends(get_current_user),
+    token: str,
     session: AsyncSession = Depends(async_get_db)
 ):
     """
-    Verify 2FA code
-    params:
-        code: str
-        user: UserModel
+    Verify the 2FA token and enable 2FA for the user.
     """
-    if not user.is_verified:
+    token_obj = await token_service.get_two_factor_token_by_token(token, session)
+
+    if not token_obj:
         raise HTTPException(
-            detail="User is not verified", status_code=status.HTTP_400_BAD_REQUEST
+            detail="Invalid or expired token.",
+            status_code=status.HTTP_400_BAD_REQUEST
         )
+
+    user = await user_service.get_user_by_email(token_obj.email, session)
+    if not user:
+        raise UserNotFound()
+
     if user.two_factor_enabled:
         raise HTTPException(
-            detail="2FA is already enabled", status_code=status.HTTP_400_BAD_REQUEST
+            detail="2FA is already enabled.",
+            status_code=status.HTTP_400_BAD_REQUEST
         )
-    if not user_service.verify_2fa_code(user, code, session):
-        raise HTTPException(
-            detail="Invalid 2FA code", status_code=status.HTTP_400_BAD_REQUEST
-        )
-    user_service.enable_2fa(user, session)
-    return JSONResponse(
-        content={"message": "2FA enabled successfully"},
-        status_code=status.HTTP_200_OK,
-    )
-
-
-@auth_router.post("/disable-2FA")
-async def disable_2fa(
-    user: UserModel = Depends(get_current_user),
-    session: AsyncSession = Depends(async_get_db)
-):
-    """
-    Disable 2FA for user
-    params:
-        user: UserModel
-    """
-    if not user.is_verified:
-        raise HTTPException(
-            detail="User is not verified", status_code=status.HTTP_400_BAD_REQUEST
-        )
-    if not user.is_2fa_enabled:
-        raise HTTPException(
-            detail="2FA is not enabled", status_code=status.HTTP_400_BAD_REQUEST
-        )
-    user_service.disable_2fa(user, session)
-    return JSONResponse(
-        content={"message": "2FA disabled successfully"},
-        status_code=status.HTTP_200_OK,
-    )
-
-
-# ------------------------------------------------
-# OAuth Routes
-# ------------------------------------------------
-
-@auth_router.post("/oauth-login")
-async def oauth_login(
-    oauth_token: str,
-    provider: str,
-    session: AsyncSession = Depends(async_get_db)
-):
-    user_data = await verify_oauth_token(oauth_token, provider)
-
-    if not user_data:
-        raise InvalidToken()
-
-    user = await user_service.get_user_by_email(user_data["email"], session)
-
-    if not user:
-        # If user doesn't exist, create a new one
-        new_user_data = OauthUserCreateModel(
-            email=user_data["email"],
-            first_name=user_data["first_name"],
-            last_name=user_data["last_name"],
-            is_verified=True,
-            is_oauth=True,
-            login_provider=provider,
-            avatar=user_data["avatar"]
-        )
-        user = await user_service.create_oauth_user(new_user_data, session)
-
-    # Generate and return access and refresh tokens
+    
     access_token = create_access_token(
-        user_data={"email": user.email, "user_uid": str(
-            user.id), "role": user.role}
+        user_data={
+            "email": user.email,
+            "user_uid": str(user.id),
+            "role": user.role,
+        }
     )
 
     refresh_token = create_access_token(
@@ -420,7 +372,40 @@ async def oauth_login(
             "message": "Login successful",
             "access_token": access_token,
             "refresh_token": refresh_token,
-            "user": {"email": user.email, "id": str(user.id)},
+            "user": {"email": user.email, "uid": str(user.id)},
         },
         status_code=status.HTTP_200_OK
     )
+
+
+
+@auth_router.get("/disable-2FA")
+async def disable_2fa(
+    user: UserModel = Depends(get_current_user),
+    session: AsyncSession = Depends(async_get_db)
+):
+    """
+    Disable 2FA for user
+    params:
+        user: UserModel
+    """
+    disabled = await token_service.disable_two_factor_for_user(user.id, session)
+    if not disabled:
+        raise HTTPException(
+            detail="Error disabling 2FA", status_code=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+    await user_service.update_user(user, {"two_factor_enabled": False}, session)
+    # Invalidate the 2FA token
+    token_obj = await token_service.get_two_factor_token_by_email(user.email, session)
+    if token_obj:
+        await session.delete(token_obj)
+        await session.commit()
+        await session.refresh(token_obj)
+
+    return JSONResponse(
+        content={"message": "2FA disabled successfully"},
+        status_code=status.HTTP_200_OK,
+    )
+
+
+
