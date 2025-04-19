@@ -20,6 +20,9 @@ class Settings(BaseSettings):
     # Auth Settings
     JWT_SECRET: str = os.getenv("JWT_SECRET", "secret")
     JWT_ALGORITHM: str = os.getenv("JWT_ALGORITHM", "secret")
+    ACCESS_TOKEN_EXPIRY: int = int(os.getenv("ACCESS_TOKEN_EXPIRY", 172800))
+    REFRESH_TOKEN_EXPIRY: int = int(os.getenv("REFRESH_TOKEN_EXPIRY", 604800))
+
 
     # Mail and Resend Settings
     MAIL_USERNAME: str = os.getenv("MAIL_USERNAME")

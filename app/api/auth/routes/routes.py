@@ -3,6 +3,7 @@ from fastapi import APIRouter, Depends, status, BackgroundTasks
 from fastapi.exceptions import HTTPException
 from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
+from app.api.auth.routes.oauth_routes import REFRESH_TOKEN_EXPIRY
 from app.api.auth.schemas.token_schemas import TwoFactorTokenCreate
 from app.api.auth.services.token_service import TokenService
 from app.core.database import async_get_db
@@ -40,8 +41,7 @@ role_checker = RoleChecker(["admin", "user"])
 admin_checker = RoleChecker(["admin"])
 
 
-REFRESH_TOKEN_EXPIRY = 2
-
+REFRESH_TOKEN_EXPIRY = settings.REFRESH_TOKEN_EXPIRY
 
 # Bearer Token
 @auth_router.post("/send_mail")
