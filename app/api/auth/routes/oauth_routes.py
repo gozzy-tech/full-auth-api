@@ -52,7 +52,7 @@ async def login_via_google(request: Request):
 
 @oauth_router.get("/callback/google")
 async def auth_via_google(
-    request: Request, 
+    request: Request,
     session: AsyncSession = Depends(async_get_db)
 ):
     try:
@@ -60,14 +60,14 @@ async def auth_via_google(
         user_info = token["userinfo"]
     except OAuthError:
         raise HTTPException(
-            status_code=400, 
+            status_code=400,
             detail="OAuth flow failed. Try again."
         )
 
     user_data = GoogleUserCreateModel(**user_info)
 
     user = await user_service.get_user_by_email(user_data.email, session)
-    
+
     if not user:
         user = await user_service.create_google_user(user_data, session)
         if not user:
@@ -86,8 +86,9 @@ async def auth_via_google(
     )
 
 
-
+# ----------------------------------------------
 # create access and refresh tokens
+# ----------------------------------------------
 @oauth_router.get("/oauth_token/{code}")
 async def create_oauth_token(
     code: str,
