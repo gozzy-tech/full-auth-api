@@ -4,6 +4,9 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
 import time
 import logging
+from starlette.middleware.sessions import SessionMiddleware
+
+from app.core.config import settings
 
 logger = logging.getLogger("uvicorn.access")
 logger.disabled = True
@@ -32,5 +35,10 @@ def register_middleware(app: FastAPI):
 
     app.add_middleware(
         TrustedHostMiddleware,
-        allowed_hosts=["localhost", "127.0.0.1" ,"0.0.0.0"],
+        allowed_hosts=["localhost", "127.0.0.1", "0.0.0.0"],
+    )
+
+    app.add_middleware(
+        SessionMiddleware,
+        secret_key=settings.JWT_SECRET,
     )

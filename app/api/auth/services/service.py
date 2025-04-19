@@ -4,7 +4,7 @@ from sqlalchemy.future import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database import async_get_db
 from ..models import User
-from ..schemas.schemas import OauthUserCreateModel, UserCreateModel
+from ..schemas.schemas import GoogleUserCreateModel, UserCreateModel
 from ..utils import generate_passwd_hash
 from typing import Optional, List
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -34,7 +34,7 @@ class UserService:
         statement = select(User).where(User.email == email)
         result = await session.execute(statement)
         return result.scalars().first()
-    
+
     async def get_user_by_id(self, user_id: UUID, session: AsyncSession = Depends(async_get_db)) -> Optional[User]:
         statement = select(User).where(User.id == user_id)
         result = await session.execute(statement)
@@ -47,15 +47,6 @@ class UserService:
         user_data_dict = user_data.model_dump()
         user_data_dict["password_hash"] = generate_passwd_hash(
             user_data_dict.pop("password"))
-        new_user = User(**user_data_dict)
-        session.add(new_user)
-        await session.commit()
-        # Ensure we return the updated instance
-        await session.refresh(new_user)
-        return new_user
-
-    async def create_oauth_user(self, user_data: OauthUserCreateModel, session: AsyncSession = Depends(async_get_db)) -> User:
-        user_data_dict = user_data.model_dump()
         new_user = User(**user_data_dict)
         session.add(new_user)
         await session.commit()
@@ -95,4 +86,48 @@ class UserService:
 
         await session.delete(user)
         await session.commit()
-        return True  # Successfully deleted
+        return True  # User deleted successfully
+
+    async def create_google_user(self, user_data: GoogleUserCreateModel, session: AsyncSession = Depends(async_get_db)) -> User:
+        user_data_dict = user_data.model_dump()
+        new_user = User(
+            first_name=user_data_dict["given_name"],
+            last_name=user_data_dict["family_name"],
+            email=user_data_dict["email"],
+            is_verified=user_data_dict["email_verified"],
+            role="user",  # Default role
+            avatar=str(user_data_dict.get("picture")
+                       ) if user_data_dict.get("picture") else None,
+            is_oauth=True,
+            login_provider="google",
+        )
+        session.add(new_user)
+        await session.commit()
+        # Ensure we return the updated instance
+        await session.refresh(new_user)
+        return new_user
+
+    async def update_google_user(
+        self,
+        user: User,
+        user_data: GoogleUserCreateModel,
+        session: AsyncSession = Depends(async_get_db)
+    ) -> User:
+        user_data_dict = user_data.model_dump()
+        # Update other fields
+        user.email = user_data_dict.get("email", user.email)
+        user.first_name = user_data_dict.get("given_name", user.first_name)
+        user.last_name = user_data_dict.get("family_name", user.last_name)
+        user.avatar = str(user_data_dict.get("picture")) if user_data_dict.get(
+            "picture") else user.avatar
+        user.login_provider = "google"
+        user.is_oauth = True
+        user.is_verified = user_data_dict.get(
+            "email_verified", user.is_verified)
+
+        # Commit the updates
+        session.add(user)
+        await session.commit()
+        await session.refresh(user)
+
+        return user

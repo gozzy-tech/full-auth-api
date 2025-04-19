@@ -1,23 +1,24 @@
-from datetime import datetime, timedelta
-from fastapi import APIRouter, Depends, status, BackgroundTasks
+from authlib.integrations.starlette_client import OAuth, OAuthError
+from fastapi import APIRouter, Depends, status
 from fastapi.exceptions import HTTPException
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, RedirectResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.auth.services.token_service import TokenService
 from app.core.database import async_get_db
-
-from ..dependencies import (verify_oauth_token,
-)
+from app.core.redis import add_oauth_code_to_blocklist, oauth_code_in_blocklist
 from ..schemas.schemas import (
-    OauthUserCreateModel,
+    GoogleUserCreateModel
 )
 from ..services.service import UserService
 from ..utils import (
-    create_access_token,
+    create_auth_tokens,
+
 )
-from ..errors import UserAlreadyExists, UserNotFound, InvalidCredentials, InvalidToken
+from ..errors import UserNotFound, InvalidCredentials
 from app.core.config import settings
-from typing import List
+from starlette.requests import Request
+import uuid
+from uuid import UUID
 
 oauth_router = APIRouter()
 user_service = UserService()
@@ -25,47 +26,92 @@ token_service = TokenService()
 
 REFRESH_TOKEN_EXPIRY = settings.REFRESH_TOKEN_EXPIRY
 
+
+oauth = OAuth()
+
+oauth.register(
+    name='google',
+    client_id=settings.GOOGLE_CLIENT_ID,
+    client_secret=settings.GOOGLE_CLIENT_SECRET,
+    server_metadata_url='https://accounts.google.com/.well-known/openid-configuration',
+    client_kwargs={
+        'scope': 'openid email profile',
+    }
+)
+
+
 # ------------------------------------------------
 # OAuth Routes
 # ------------------------------------------------
 
-@oauth_router.post("/oauth-login")
-async def oauth_login(
-    oauth_token: str,
-    provider: str,
+@oauth_router.get("/login/google")
+async def login_via_google(request: Request):
+    redirect_uri = request.url_for('auth_via_google')
+    return await oauth.google.authorize_redirect(request, redirect_uri)
+
+
+@oauth_router.get("/callback/google")
+async def auth_via_google(
+    request: Request, 
     session: AsyncSession = Depends(async_get_db)
 ):
-    user_data = await verify_oauth_token(oauth_token, provider)
+    try:
+        token = await oauth.google.authorize_access_token(request)
+        user_info = token["userinfo"]
+    except OAuthError:
+        raise HTTPException(
+            status_code=400, 
+            detail="OAuth flow failed. Try again."
+        )
 
-    if not user_data:
-        raise InvalidToken()
+    user_data = GoogleUserCreateModel(**user_info)
 
-    user = await user_service.get_user_by_email(user_data["email"], session)
+    user = await user_service.get_user_by_email(user_data.email, session)
+    
+    if not user:
+        user = await user_service.create_google_user(user_data, session)
+        if not user:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="User creation failed",
+            )
+    else:
+        user = await user_service.update_google_user(user, user_data, session)
+
+    code = str(uuid.uuid4())
+    await add_oauth_code_to_blocklist(code, str(user.id))
+
+    return RedirectResponse(
+        url=f"http://{settings.DOMAIN}/oauth_success?code={code}"
+    )
+
+
+
+# create access and refresh tokens
+@oauth_router.get("/oauth_token/{code}")
+async def create_oauth_token(
+    code: str,
+    session: AsyncSession = Depends(async_get_db)
+):
+    user_id = await oauth_code_in_blocklist(code)
+
+    if not user_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid or expired code",
+        )
+    user = await user_service.get_user_by_id(UUID(user_id), session)
 
     if not user:
-        # If user doesn't exist, create a new one
-        new_user_data = OauthUserCreateModel(
-            email=user_data["email"],
-            first_name=user_data["first_name"],
-            last_name=user_data["last_name"],
-            is_verified=True,
-            is_oauth=True,
-            login_provider=provider,
-            avatar=user_data["avatar"]
-        )
-        user = await user_service.create_oauth_user(new_user_data, session)
+        raise UserNotFound()
 
-    # Generate and return access and refresh tokens
-    access_token = create_access_token(
-        user_data={"email": user.email, "user_uid": str(
-            user.id), "role": user.role}
-    )
+    if not user.is_verified:
+        raise InvalidCredentials()
 
-    refresh_token = create_access_token(
-        user_data={"email": user.email, "user_uid": str(user.id)},
-        refresh=True,
-        expiry=timedelta(days=REFRESH_TOKEN_EXPIRY),
-    )
+    if not user.is_oauth:
+        raise InvalidCredentials()
+
+    access_token, refresh_token = create_auth_tokens(user)
 
     return JSONResponse(
         content={

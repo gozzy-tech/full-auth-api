@@ -34,6 +34,12 @@ class Settings(BaseSettings):
     RESEND_API_KEY: str = os.getenv("RESEND_API_KEY")
     RESEND_MAIL_FROM: str = os.getenv("RESEND_MAIL_FROM")
 
+    # Oauth Secrets
+    GOOGLE_CLIENT_ID: str = os.getenv("GOOGLE_CLIENT_ID")
+    GOOGLE_CLIENT_SECRET: str = os.getenv("GOOGLE_CLIENT_SECRET")
+    GITHUB_CLIENT_ID: str = os.getenv("GITHUB_CLIENT_ID")
+    GITHUB_CLIENT_SECRET: str = os.getenv("GITHUB_CLIENT_SECRET")
+
     class Config:
         env_file = ".env"  # Load from .env file
         env_file_encoding = "utf-8"

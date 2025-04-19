@@ -1,3 +1,4 @@
+from app.api.auth.models import User
 from app.core.config import settings
 from passlib.context import CryptContext
 import logging
@@ -12,6 +13,7 @@ bcrypt.__about__ = bcrypt
 passwd_context = CryptContext(schemes=["bcrypt"])
 
 ACCESS_TOKEN_EXPIRY = settings.ACCESS_TOKEN_EXPIRY
+REFRESH_TOKEN_EXPIRY = settings.REFRESH_TOKEN_EXPIRY
 
 
 def generate_passwd_hash(password: str) -> str:
@@ -79,3 +81,18 @@ def decode_url_safe_token(token: str):
     except Exception as e:
         logging.error(str(e))
 
+
+def create_auth_tokens(user: User):
+    access_token = create_access_token({
+        "email": user.email,
+        "id": str(user.id),
+        "role": user.role,
+    })
+
+    refresh_token = create_access_token(
+        {"email": user.email, "id": str(user.id)},
+        refresh=True,
+        expiry=timedelta(days=REFRESH_TOKEN_EXPIRY),
+    )
+
+    return access_token, refresh_token

@@ -2,7 +2,7 @@ import email
 import uuid
 from typing import List, Optional
 from enum import Enum
-from pydantic import BaseModel, Field, EmailStr, field_serializer
+from pydantic import BaseModel, Field, EmailStr, field_serializer, HttpUrl
 import uuid
 from datetime import datetime
 
@@ -33,16 +33,18 @@ class UserCreateModel(BaseModel):
     }
 
 
-class OauthUserCreateModel(BaseModel):
+class GoogleUserCreateModel(BaseModel):
     """
-    Oauth user registration model
+    Google user registration model
     """
-    first_name: str = Field(max_length=25)
-    last_name: str = Field(max_length=25)
-    email: str = Field(max_length=40)
-    is_verified: bool = False
-    is_oauth: bool = False
-    avatar: Optional[str] = None
+    sub: str  # Google user ID
+    name: str
+    given_name: str
+    family_name: str
+    picture: HttpUrl
+    email: EmailStr
+    email_verified: bool
+    locale: Optional[str] = None  # ← Make this optional
 
 
 class UserResponseModel(BaseModel):
@@ -69,7 +71,7 @@ class UserModel(BaseModel):
     address: Optional[str] = None
     state: Optional[str] = None
     country: Optional[str] = None
-    password_hash: str = Field(exclude=True)
+    password_hash: Optional[str] = Field(exclude=True)
     avatar: Optional[str] = None
     bio: Optional[str] = None
     gender: Optional[str] = None
