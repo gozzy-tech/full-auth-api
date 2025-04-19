@@ -11,7 +11,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import delete, select
 
 
-
 class UserService:
     async def get_users(
         self,
@@ -35,6 +34,11 @@ class UserService:
         statement = select(User).where(User.email == email)
         result = await session.execute(statement)
         return result.scalars().first()
+    
+    async def get_user_by_id(self, user_id: UUID, session: AsyncSession = Depends(async_get_db)) -> Optional[User]:
+        statement = select(User).where(User.id == user_id)
+        result = await session.execute(statement)
+        return result.scalars().first()
 
     async def user_exists(self, email: str, session: AsyncSession = Depends(async_get_db)) -> bool:
         return await self.get_user_by_email(email, session) is not None
@@ -49,7 +53,7 @@ class UserService:
         # Ensure we return the updated instance
         await session.refresh(new_user)
         return new_user
-    
+
     async def create_oauth_user(self, user_data: OauthUserCreateModel, session: AsyncSession = Depends(async_get_db)) -> User:
         user_data_dict = user_data.model_dump()
         new_user = User(**user_data_dict)
@@ -59,9 +63,24 @@ class UserService:
         await session.refresh(new_user)
         return new_user
 
-    async def update_user(self, user: User, user_data: dict, session: AsyncSession = Depends(async_get_db)) -> User:
+    async def update_user(
+        self,
+        user: User,
+        user_data: dict,
+        session: AsyncSession = Depends(async_get_db)
+    ) -> User:
+        # Avoid updating email if it's None
+        if "email" in user_data and user_data["email"] is None:
+            user_data.pop("email")
+
+        # Check if email is being changed
+        if "email" in user_data and user_data["email"] != user.email:
+            user.is_verified = False
+
+        # Apply all updates
         for key, value in user_data.items():
             setattr(user, key, value)
+
         await session.commit()
         await session.refresh(user)  # Refresh instance after commit
         return user
@@ -77,5 +96,3 @@ class UserService:
         await session.delete(user)
         await session.commit()
         return True  # Successfully deleted
-
-

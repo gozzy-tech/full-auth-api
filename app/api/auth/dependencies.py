@@ -17,6 +17,7 @@ from .errors import (
     AccountNotVerified,
 )
 import httpx
+from uuid import UUID
 
 user_service = UserService()
 
@@ -61,8 +62,8 @@ async def get_current_user(
     token_details: dict = Depends(AccessTokenBearer()),
     session: AsyncSession = Depends(async_get_db),
 ):
-    user_email = token_details["user"]["email"]
-    user = await user_service.get_user_by_email(user_email, session)
+    user_id = UUID(token_details["user"]["id"])  # Convert to UUID
+    user = await user_service.get_user_by_id(user_id, session)
     return user
 
 

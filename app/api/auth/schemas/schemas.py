@@ -1,3 +1,4 @@
+import email
 import uuid
 from typing import List, Optional
 from enum import Enum
@@ -93,7 +94,7 @@ class UserModel(BaseModel):
 class UserUpdateModel(BaseModel):
     first_name: str
     last_name: str
-    email: EmailStr  # Ensures email validation
+    email: Optional[EmailStr] = None  # Make email optional
     phone: Optional[str] = None
     address: Optional[str] = None
     state: Optional[str] = None
@@ -115,13 +116,29 @@ class EmailModel(BaseModel):
     addresses: List[str]
 
 
-class PasswordResetRequestModel(BaseModel):
+class TokenRequestModel(BaseModel):
     email: str
+
 
 
 class PasswordResetConfirmModel(BaseModel):
     new_password: str
     confirm_new_password: str
+
+class PasswordResetModel(BaseModel):
+    new_password: str
+    confirm_new_password: str
+    old_password: str
+
+    class Config:
+        from_attributes = True
+        json_schema_extra = {
+            "example": {
+                "new_password": "newpassword123",
+                "confirm_new_password": "newpassword123",
+                "old_password": "oldpassword123"
+            }
+        }
 
 
 

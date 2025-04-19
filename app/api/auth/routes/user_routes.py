@@ -8,7 +8,7 @@ from app.core.database import async_get_db
 
 from ..dependencies import (
     RoleChecker,
-    get_current_user,
+    get_current_user as get_current_user_dep,
 )
 from ..schemas.schemas import (
     UserModel,
@@ -24,6 +24,9 @@ user_service = UserService()
 role_checker = RoleChecker(["admin", "user"])
 admin_checker = RoleChecker(["admin"])
 
+# --------------------------------------------------------------------
+# Fetch all users
+# --------------------------------------------------------------------
 
 @user_router.get("/all", response_model=List[UserResponseModel])
 async def fetch_users(
@@ -36,13 +39,20 @@ async def fetch_users(
     users = await user_service.get_users(role, limit, offset, session)
     return users
 
+# --------------------------------------------------------------------
+# Fetch user by ID
+# --------------------------------------------------------------------
 
-@user_router.get("/profile", response_model=UserModel)
+@user_router.get("/profile", response_model=UserModel | None)
 async def get_current_user(
-    user=Depends(get_current_user), _: bool = Depends(role_checker)
+    user: UserModel = Depends(get_current_user_dep)
 ):
     return user
 
+
+# --------------------------------------------------------------------
+# Update user information
+# --------------------------------------------------------------------
 
 @user_router.put("/update-user")
 async def update_user(
@@ -63,11 +73,14 @@ async def update_user(
 
     return JSONResponse(
         content={"message": "User information updated successfully",
-                 "user": updated_user
+                 "user": UserUpdateModel.model_validate(updated_user).model_dump()
                  },
         status_code=status.HTTP_200_OK
     )
 
+# --------------------------------------------------------------------
+# Delete user
+# --------------------------------------------------------------------
 
 @user_router.delete("/delete_user/{user_id}")
 async def delete_user(

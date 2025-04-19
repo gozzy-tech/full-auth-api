@@ -23,7 +23,7 @@ oauth_router = APIRouter()
 user_service = UserService()
 token_service = TokenService()
 
-REFRESH_TOKEN_EXPIRY = 2
+REFRESH_TOKEN_EXPIRY = settings.REFRESH_TOKEN_EXPIRY
 
 # ------------------------------------------------
 # OAuth Routes

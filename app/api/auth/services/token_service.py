@@ -22,7 +22,7 @@ from ..models import (
 class TokenService:
     # Generate Verification Token
     async def generate_verification_token(self, email: str, db: AsyncSession) -> VerificationToken:
-        token = str(uuid.uuid4())
+        token = str(secrets.randbelow(899999) + 100000)
         expires = datetime.now(timezone.utc) + timedelta(hours=1)
 
         # Check for existing token
