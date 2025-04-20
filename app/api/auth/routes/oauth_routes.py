@@ -19,6 +19,9 @@ from app.core.config import settings
 from starlette.requests import Request
 import uuid
 from uuid import UUID
+from fastapi.background import BackgroundTasks
+from app.core.mail import send_email
+from app.core.templates import templates
 
 oauth_router = APIRouter()
 user_service = UserService()
@@ -68,15 +71,23 @@ async def auth_via_google(
 
     user = await user_service.get_user_by_email(user_data.email, session)
 
-    if not user:
+    if user:
+        if user.login_provider == "email" and not user.is_verified:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Account exists but is not verified.",
+            )
+        elif user.login_provider == "email" and user.is_verified:
+            user = await user_service.update_google_user(user, user_data, session)
+        elif user.login_provider == "google":
+            user = await user_service.update_google_user(user, user_data, session)
+    else:
         user = await user_service.create_google_user(user_data, session)
         if not user:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="User creation failed",
             )
-    else:
-        user = await user_service.update_google_user(user, user_data, session)
 
     code = str(uuid.uuid4())
     await add_oauth_code_to_blocklist(code, str(user.id))
@@ -92,6 +103,7 @@ async def auth_via_google(
 @oauth_router.get("/oauth_token/{code}")
 async def create_oauth_token(
     code: str,
+    background_tasks: BackgroundTasks,
     session: AsyncSession = Depends(async_get_db)
 ):
     user_id = await oauth_code_in_blocklist(code)
@@ -112,8 +124,30 @@ async def create_oauth_token(
     if not user.is_oauth:
         raise InvalidCredentials()
 
-    access_token, refresh_token = create_auth_tokens(user)
+    # Check if the user has 2FA enabled
+    if user.two_factor_enabled:
+        two_factor_token = await token_service.generate_two_factor_token(
+            email=user.email, db=session
+        )
 
+        html = templates.get_template("auth/2fa_code.html").render(
+            token=two_factor_token.token,
+        )
+
+        emails = [two_factor_token.email]
+        subject = "2FA Code"
+        background_tasks.add_task(send_email, emails, subject, html, True)
+
+        return JSONResponse(
+            content={
+                "message": "2FA code sent to your email",
+                "two_factor_required": True,
+                "user": {"email": user.email, "uid": str(user.id)},
+            },
+            status_code=status.HTTP_202_ACCEPTED
+        )
+
+    access_token, refresh_token = create_auth_tokens(user)
     return JSONResponse(
         content={
             "message": "Login successful",

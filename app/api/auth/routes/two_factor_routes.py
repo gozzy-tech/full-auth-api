@@ -1,12 +1,11 @@
-from datetime import timedelta
 from fastapi import APIRouter, Depends, status, BackgroundTasks
 from fastapi.exceptions import HTTPException
 from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
-from app.api.auth.routes.oauth_routes import REFRESH_TOKEN_EXPIRY
 from app.api.auth.services.token_service import TokenService
 from app.core.database import async_get_db
 from app.core.mail import send_email
+from app.core.templates import templates
 
 from ..dependencies import (
     RoleChecker,
@@ -117,17 +116,10 @@ async def resend_2fa_code(
             content={"message": "Error generating 2FA token"},
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
-    html = f"""
-    <h1>2FA Code</h1>
-    <p>
-        Your 2FA code is: <strong>{token_obj.token}</strong>
-        <br>
-        This code is valid for 1 hour.
-    </p>
-    <p>
-        If you did not request this code, please ignore this email.
-    </p>
-    """
+    html = templates.get_template("auth/2fa_code.html").render(
+        token=token_obj.token,
+    )
+    # Send email with the 2FA code
     emails = [token_obj.email]
     subject = "2FA Code"
     background_tasks.add_task(send_email, emails, subject, html, True)

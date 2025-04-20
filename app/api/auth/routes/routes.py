@@ -1,14 +1,13 @@
-from datetime import datetime, timedelta
+from datetime import datetime
 from fastapi import APIRouter, Depends, status, BackgroundTasks
 from fastapi.exceptions import HTTPException
 from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
-from app.api.auth.routes.oauth_routes import REFRESH_TOKEN_EXPIRY
-from app.api.auth.schemas.token_schemas import TwoFactorTokenCreate
 from app.api.auth.services.token_service import TokenService
 from app.core.database import async_get_db
 from app.core.mail import send_email, send_multiple_emails
 from app.core.redis import add_jti_to_blocklist
+from app.core.templates import templates
 
 from ..dependencies import (
     AccessTokenBearer,
@@ -88,17 +87,10 @@ async def create_user_Account(
         db=session,
     )
 
-    html = f"""
-            <h1>Verify your Email</h1>
-            <p>
-                Your verification code is: <strong>{token_data.token}</strong>
-                <br>
-                This code is valid for 1 hour.
-            </p>
-            <p>
-                If you did not request this code, please ignore this email.
-            </p>
-            """
+    html = templates.get_template("auth/email_verfication.html").render(
+        token=token_data.token,
+        user=new_user,
+    )
     emails = [token_data.email]
     subject = "Verify Your email"
     background_tasks.add_task(send_email, emails, subject, html, True)
@@ -131,18 +123,17 @@ async def resend_verification_email(
         email=email_data.email,
         db=session,
     )
+    user_data = await user_service.get_user_by_email(
+        email=email_data.email,
+        session=session,
+    )
+    if not user_data:
+        raise UserNotFound()
 
-    html = f"""
-            <h1>Verify your Email</h1>
-            <p>
-                Your verification code is: <strong>{token_data.token}</strong>
-                <br>
-                This code is valid for 1 hour.
-            </p>
-            <p>
-                If you did not request this code, please ignore this email.
-            </p>
-            """
+    html = templates.get_template("auth/email_verfication.html").render(
+        token=token_data.token,
+        user=user_data,
+    )
     emails = [token_data.email]
     subject = "Verify Your email"
     background_tasks.add_task(send_email, emails, subject, html, True)
@@ -176,17 +167,11 @@ async def login_users(
                 db=session,
             )
 
-            html = f"""
-                    <h1>Verify your Email</h1>
-                    <p>
-                        Your verification code is: <strong>{token_data.token}</strong>
-                        <br>
-                        This code is valid for 1 hour.
-                    </p>
-                    <p>
-                        If you did not request this code, please ignore this email.
-                    </p>
-                    """
+            html = templates.get_template("auth/email_verfication.html").render(
+                token=token_data.token,
+                user=user,
+            )
+
             emails = [token_data.email]
             subject = "Verify Your email"
             background_tasks.add_task(send_email, emails, subject, html, True)
@@ -204,17 +189,10 @@ async def login_users(
                 email=user.email, db=session
             )
 
-            html = f"""
-            <h1>2FA Code</h1>
-            <p>
-                Your 2FA code is: <strong>{two_factor_token.token}</strong>
-                <br>
-                This code is valid for 1 hour.
-            </p>
-            <p>
-                If you did not request this code, please ignore this email.
-            </p>
-            """
+            html = templates.get_template("auth/2fa_code.html").render(
+                token=two_factor_token.token,
+            )
+
             emails = [two_factor_token.email]
             subject = "2FA Code"
             background_tasks.add_task(send_email, emails, subject, html, True)
@@ -334,13 +312,12 @@ async def password_reset_request(
 
     link = f"http://{settings.DOMAIN}/reset-password?token={token_data.token}"
 
-    html_message = f"""
-    <h1>Reset Your Password</h1>
-    <p>Please click this <a href="{link}">link</a> to Reset Your Password</p>
-    """
+    html = templates.get_template("auth/password_reset.html").render(
+        reset_url=link,
+    )
     subject = "Reset Your Password"
     background_tasks.add_task(
-        send_email, [token_data.email], subject, html_message, True)
+        send_email, [token_data.email], subject, html, True)
 
     return JSONResponse(
         content={

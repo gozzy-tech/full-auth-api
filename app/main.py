@@ -19,11 +19,13 @@ app = FastAPI(title=settings.PROJECT_NAME,
                   "email": "chiagoziendukwe@gmail.com",
               },
               )
+
 version_prefix = f"/api/v1"
 app.include_router(main_router, prefix=version_prefix)
 
 register_all_errors(app)
 register_middleware(app)
+
 
 @app.get("/", tags=["Root"])
 async def read_root():
