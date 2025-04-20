@@ -1,64 +1,102 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>
-        {% block title %}Email Notification{% endblock %}
-    </title>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html dir="ltr" lang="en">
+  <head>
+    <meta content="text/html; charset=UTF-8" http-equiv="Content-Type" />
+    <meta name="x-apple-disable-message-reformatting" />
+    <link
+      rel="preload"
+      as="image"
+      href="https://react-email-demo-2qlfkicae-resend.vercel.app/static/aws-logo.png"
+    />
+    <title>{% block title %}Email Notification{% endblock %}</title>
     <style>
-        body {
-            margin: 0;
-            padding: 0;
-            background-color: #f9fafb;
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-        }
-        .email-container {
-            width: 100%;
-            max-width: 600px;
-            margin: 40px auto;
-            background-color: #ffffff;
-            border-radius: 8px;
-            overflow: hidden;
-        }
-        .email-content {
-            padding: 40px 30px;
-        }
-        .button {
-            display: inline-block;
-            padding: 12px 24px;
-            background-color: #3b82f6;
-            color: #ffffff;
-            text-decoration: none;
-            border-radius: 6px;
-            font-weight: 500;
-        }
-        .text-center {
-            text-align: center;
-        }
-        .footer {
-            margin-top: 20px;
-            padding-top: 20px;
-            border-top: 1px solid #e5e7eb;
-            color: #6b7280;
-            font-size: 14px;
-            text-align: center;
-        }
-        h1 {
-            color: #1a2b3c;
-            font-size: 24px;
-            margin-bottom: 20px;
-        }
-        p {
-            color: #4b5563;
-            font-size: 16px;
-            line-height: 1.6;
-            margin-bottom: 30px;
-        }
+      body {
+        background-color: #fff;
+        color: #212121;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Roboto",
+          "Oxygen", "Ubuntu", "Cantarell", "Fira Sans", "Droid Sans",
+          "Helvetica Neue", sans-serif;
+      }
+      .container {
+        max-width: 600px;
+        margin: 0 auto;
+        padding: 20px;
+        background-color: #eee;
+      }
+      .card {
+        background-color: #fff;
+        padding: 25px 35px;
+      }
+      .logo-bar {
+        background-color: #252f3d;
+        padding: 20px 0;
+        text-align: center;
+      }
+      .logo-bar img {
+        display: block;
+        margin: 0 auto;
+        height: 45px;
+        width: 75px;
+      }
+      .title {
+        font-size: 20px;
+        font-weight: bold;
+        color: #333;
+        margin-bottom: 15px;
+      }
+      .text {
+        font-size: 14px;
+        line-height: 24px;
+        color: #333;
+        margin: 29px 0 0 0;
+      }
+      .code-label {
+        font-weight: bold;
+        text-align: center;
+        margin-bottom: -3px;
+      }
+      .code {
+        font-size: 36px;
+        font-weight: bold;
+        text-align: center;
+        margin: -1px 0;
+      }
+      .subtext {
+        font-size: 14px;
+        color: #333;
+        text-align: center;
+        margin: 0;
+      }
+      .footer {
+        font-size: 12px;
+        padding: 0 20px;
+        color: #333;
+        margin: 24px 0;
+      }
+      .link {
+        color: #2754c5;
+        text-decoration: underline;
+      }
+      .link:hover {
+        text-decoration: none;
+        color: orange;
+      }
+      .hr {
+        width: 100%;
+        border: none;
+        border-top: 1px solid #eaeaea;
+      }
+      .button {
+        background-color: #2754c5;
+        color: #fff;
+        padding: 10px 20px;
+        text-decoration: none;
+        border-radius: 5px;
+        display: inline-block;
+      }
     </style>
-</head>
-<body>
-    {% block content %}
-    {% endblock %}
-</body>
+  </head>
+  <body>
+    {% block content %} {% endblock %}
+  </body>
 </html>
