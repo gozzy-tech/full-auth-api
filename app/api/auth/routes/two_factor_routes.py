@@ -20,6 +20,7 @@ from ..schemas.schemas import (
 from ..services.service import UserService
 from ..utils import (
     create_access_token,
+    create_auth_tokens,
 )
 from ..errors import UserNotFound
 
@@ -80,19 +81,7 @@ async def verify_2fa_code(
     if not user:
         raise UserNotFound()
 
-    access_token = create_access_token(
-        user_data={
-            "email": user.email,
-            "id": str(user.id),
-            "role": user.role,
-        }
-    )
-
-    refresh_token = create_access_token(
-        user_data={"email": user.email, "id": str(user.id)},
-        refresh=True,
-        expiry=timedelta(days=REFRESH_TOKEN_EXPIRY),
-    )
+    access_token, refresh_token = create_auth_tokens(user)
 
     return JSONResponse(
         content={
@@ -107,6 +96,7 @@ async def verify_2fa_code(
 # --------------------------------------------------------------------
 # Resend 2FA code
 # --------------------------------------------------------------------
+
 
 @twoFA_router.post("/resend-2FA-code")
 async def resend_2fa_code(
@@ -151,6 +141,7 @@ async def resend_2fa_code(
 # --------------------------------------------------------------------
 # Disable 2FA for user
 # --------------------------------------------------------------------
+
 
 @twoFA_router.get("/disable-2FA")
 async def disable_2fa(

@@ -28,6 +28,7 @@ from ..schemas.schemas import (
 from ..services.service import UserService
 from ..utils import (
     create_access_token,
+    create_auth_tokens,
     verify_password,
     generate_passwd_hash,
 )
@@ -227,20 +228,7 @@ async def login_users(
                 status_code=status.HTTP_202_ACCEPTED
             )
 
-        # If 2FA not enabled, proceed with login
-        access_token = create_access_token(
-            user_data={
-                "email": user.email,
-                "id": str(user.id),
-                "role": user.role,
-            }
-        )
-
-        refresh_token = create_access_token(
-            user_data={"email": user.email, "id": str(user.id)},
-            refresh=True,
-            expiry=timedelta(days=REFRESH_TOKEN_EXPIRY),
-        )
+        access_token, refresh_token = create_auth_tokens(user)
 
         return JSONResponse(
             content={
@@ -276,19 +264,7 @@ async def verify_user_account(token: str, session: AsyncSession = Depends(async_
 
         await user_service.update_user(user, {"is_verified": True}, session)
 
-        access_token = create_access_token(
-            user_data={
-                "email": user.email,
-                "id": str(user.id),
-                "role": user.role,
-            }
-        )
-
-        refresh_token = create_access_token(
-            user_data={"email": user.email, "id": str(user.id)},
-            refresh=True,
-            expiry=timedelta(days=REFRESH_TOKEN_EXPIRY),
-        )
+        access_token, refresh_token = create_auth_tokens(user)
 
         return JSONResponse(
             content={
@@ -423,6 +399,8 @@ async def reset_account_password(
 # ------------------------------------------------
 # Password Reset Route
 # ------------------------------------------------
+
+
 @auth_router.post("/password-reset", status_code=status.HTTP_200_OK)
 async def password_reset(
     passwords: PasswordResetModel,
