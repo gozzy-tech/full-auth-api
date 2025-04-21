@@ -79,8 +79,8 @@ async def auth_via_google(
             )
         elif user.login_provider == "email" and user.is_verified:
             user = await user_service.update_google_user(user, user_data, session)
-        elif user.login_provider == "google":
-            user = await user_service.update_google_user(user, user_data, session)
+        # elif user.login_provider == "google":
+        #     user = await user_service.update_google_user(user, user_data, session)
     else:
         user = await user_service.create_google_user(user_data, session)
         if not user:

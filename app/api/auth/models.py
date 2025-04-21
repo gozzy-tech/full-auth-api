@@ -116,7 +116,7 @@ class Activity(Base):
     description = Column(String, nullable=False)
     activity_type = Column(String, nullable=False,
                            default=ActivityType.CREATE.value)
-    created_at = Column(DateTime, default=lambda: datetime.now(
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(
         timezone.utc), nullable=False)
 
     user_id = Column(UUID(as_uuid=True), ForeignKey(

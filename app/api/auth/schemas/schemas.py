@@ -50,7 +50,7 @@ class GoogleUserCreateModel(BaseModel):
 class UserResponseModel(BaseModel):
     id: uuid.UUID
     first_name: str
-    last_name: str
+    last_name: Optional[str] = None
     email: EmailStr  # Ensures email validation
     phone: Optional[str] = None
     avatar: Optional[str] = None
@@ -65,7 +65,7 @@ class UserResponseModel(BaseModel):
 class UserModel(BaseModel):
     id: uuid.UUID
     first_name: str
-    last_name: str
+    last_name: Optional[str] = None
     email: EmailStr  # Ensures email validation
     phone: Optional[str] = None
     address: Optional[str] = None
@@ -88,6 +88,11 @@ class UserModel(BaseModel):
     @field_serializer("created_at")
     def serialize_datetime(self, value: datetime) -> str:
         return value.isoformat()
+    
+    @field_serializer(["is_verified", "two_factor_enabled", "is_oauth"])
+    def serialize_boolean(self, value: bool | None) -> str:
+        return str(bool(value)).lower()
+
 
     class Config:
         from_attributes = True  # Enables ORM compatibility for SQLAlchemy integration
@@ -95,7 +100,7 @@ class UserModel(BaseModel):
 
 class UserUpdateModel(BaseModel):
     first_name: str
-    last_name: str
+    last_name: Optional[str] = None
     email: Optional[EmailStr] = None  # Make email optional
     phone: Optional[str] = None
     address: Optional[str] = None
